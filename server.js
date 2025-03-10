@@ -1,0 +1,104 @@
+const express = require('express');
+const { PrismaClient } = require("@prisma/client");
+const bodyParser = require("body-parser");
+const crypto = require("crypto-js");
+require("dotenv").config();
+
+function EncodeData(data) { 
+    return crypto.AES.encrypt(data, process.env.SECRET_KEY).toString(); 
+}
+
+function DecodeData(data) { 
+    return crypto.AES.decrypt(data, process.env.SECRET_KEY).toString(crypto.enc.Utf8); 
+}
+
+function EncodePs(data) { 
+    return crypto.enc.Base64.stringify(crypto.HmacSHA256(data,process.env.SECRET_KEY)); 
+}
+
+
+const app = express()
+app.use(bodyParser.json())
+const prisma = new PrismaClient();
+const port = 3000
+
+app.get('/', (req, res) => {
+    res.send('Hello World!')
+})
+
+app.get('/user', async (req, res) => {
+    const data = await prisma.$queryRaw`select id, username, cardid from user`;
+    const finalData = await data.map(record => ({ ...record, cardId: DecodeData(record.cardId), username : DecodeData(record.username) }));
+    res.json({
+        message: 'okay',
+        data: finalData
+    });
+});
+
+app.post('/user', async (req, res) => {
+    console.log(req.body)
+    const response = await prisma.user.create({
+        data: {
+            username: EncodeData(req.body.username),
+            password: EncodePs(req.body.password),
+            cardId: EncodeData(req.body.cardId)
+        }
+    });
+    if (response) {
+        res.json({
+            message: "add successfully"
+        })
+    } else {
+        res.json9({
+            message: "failed"
+        })
+    }
+});
+
+app.put('/user', async (req, res) => {
+    const response = await prisma.user.update({
+        select: {
+            password: true,
+            id: true
+        },
+        where: {
+            id: req.body.id
+        },
+        data: {
+            password: req.body.password
+        }
+    });
+    if (response) {
+        res.json({
+            message: "update sucessfully"
+        })
+    } else {
+        res.json({
+            message: "update fail"
+        })
+    }
+});
+
+app.delete('/user', async (req, res) => {
+    const response = await prisma.user.delete({
+        where: {
+            id: req.body.id
+        },
+        select: {
+            username: true
+        }
+    });
+    if (response) {
+        res.json({
+            message: "dalete sucessfully"
+        })
+    } else {
+        res.json({
+            message: "dalete fail"
+        })
+    }
+});
+
+app.listen(port, () => {
+    console.log(`server is running on port ${port}`)
+})
